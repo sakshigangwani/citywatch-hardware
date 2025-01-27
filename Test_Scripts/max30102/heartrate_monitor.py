@@ -1,4 +1,3 @@
-
 from max30102 import MAX30102
 import hrcalc
 import threading
@@ -11,14 +10,18 @@ class HeartRateMonitor(object):
     A class that encapsulates the max30102 device into a thread
     """
 
-    LOOP_TIME = 0.01
+    LOOP_TIME = 1
 
     def __init__(self, print_raw=False, print_result=False):
         self.bpm = 0
+        self.spo2 = 0
         if print_raw is True:
             print('IR, Red')
         self.print_raw = print_raw
         self.print_result = print_result
+        
+    def set_spo2(self, value):
+        self.spo2 = value
 
     def run_sensor(self):
         sensor = MAX30102()
@@ -57,10 +60,17 @@ class HeartRateMonitor(object):
                                 print("Finger not detected")
                         if self.print_result:
                             print("BPM: {0}, SpO2: {1}".format(self.bpm, spo2))
+                            self.set_spo2(spo2)
 
             time.sleep(self.LOOP_TIME)
 
         sensor.shutdown()
+
+    def get_heart_rate(self):
+        return self.bpm
+        
+    def get_spo2(self):
+        return self.spo2
 
     def start_sensor(self):
         self._thread = threading.Thread(target=self.run_sensor)
