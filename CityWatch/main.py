@@ -91,12 +91,12 @@ async def values():
             # Handle accelerometer and gyroscope data
             if not mpu6050_data_queue.empty():
                 mpu6050_thread_data = mpu6050_data_queue.get()
-                print("Data from thread:", mpu6050_thread_data)
+                print("Data from mpu6050 thread:", mpu6050_thread_data)
 
             # Handle accelerometer, temperature, and heart rate data
             if not accel_temp_hr_data_queue.empty():
                 accel_temp_hr_thread_data = accel_temp_hr_data_queue.get()
-                print("Data from thread:", accel_temp_hr_thread_data)
+                print("Data from accel temp hr thread:", accel_temp_hr_thread_data)
 
                 data_for_firebase["body_temp"] = accel_temp_hr_thread_data[1]
                 data_for_firebase["heart_rate"] = float(accel_temp_hr_thread_data[2])
