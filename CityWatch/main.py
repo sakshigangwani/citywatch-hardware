@@ -4,6 +4,7 @@ import json
 import uuid
 import geocoder
 import asyncio
+import signal
 from queue import Queue
 from datetime import datetime, timezone
 import firebase_admin
@@ -22,14 +23,18 @@ def get_lat_long():
 
 
 def collect_mpu6050_data(data_queue):
-    while True:
+    global stop_threads
+
+    while not stop_threads:
         mpu6050_data = mpu6050_sensor_data.collect_sensor_data()
         data_queue.put(mpu6050_data)  # Add data to the queue
         time.sleep(2)
 
 
 def collect_accel_temp_hr_data(data_queue):
-    while True:
+    global stop_threads
+
+    while not stop_threads:
         accel_data = mpu6050_sensor_data.read_accelerometer_data()
         body_temp_data = main_mlx90614.get_object_temperature()
         heart_rate_data, spo2 = main_max30102.read_heart_rate()
@@ -42,11 +47,13 @@ def collect_accel_temp_hr_data(data_queue):
 
 
 def send_to_firebase_on_button_press():
+    global stop_threads
+
     try:
-        while True:
+        while not stop_threads:
             time.sleep(0.2)
             if GPIO.input(BUTTON_PIN) == GPIO.LOW:
-                print("Button is pressed")
+                print("[INFO] Button is pressed")
                 # Save to Firestore
                 try:
                     # Generate a unique ID using uuid4
@@ -60,17 +67,18 @@ def send_to_firebase_on_button_press():
                     print(data_for_firebase)
                     doc_ref = db.collection("reports").document(str(reportID))
                     doc_ref.set(data_for_firebase)
-                    print(f"Data successfully written to Firestore: {reportID}")
+                    print(f"[INFO] Data successfully written to Firestore: {reportID}")
                 except Exception as e:
-                    print(f"Error writing to Firestore: {e}")
+                    print(f"[ERROR] Error writing to Firestore: {e}")
             else:
-                # print("Button is not pressed")
                 pass
     except KeyboardInterrupt:
         GPIO.cleanup()
 
 
 async def values():
+    global stop_threads
+
     mpu6050_data_queue = Queue()  
     accel_temp_hr_data_queue = Queue()
 
@@ -87,22 +95,22 @@ async def values():
     button_thread.start()
 
     try:
-        while True:
+        while not stop_threads:
             # Handle accelerometer and gyroscope data
             if not mpu6050_data_queue.empty():
                 mpu6050_thread_data = mpu6050_data_queue.get()
-                print("Data from mpu6050 thread:", mpu6050_thread_data)
+                print("[INFO] Data from mpu6050 thread:", mpu6050_thread_data)
 
             # Handle accelerometer, temperature, and heart rate data
             if not accel_temp_hr_data_queue.empty():
                 accel_temp_hr_thread_data = accel_temp_hr_data_queue.get()
-                print("Data from accel temp hr thread:", accel_temp_hr_thread_data)
+                print("[INFO] Data from accel temp hr thread:", accel_temp_hr_thread_data)
 
                 data_for_firebase["body_temp"] = accel_temp_hr_thread_data[1]
                 data_for_firebase["heart_rate"] = float(accel_temp_hr_thread_data[2])
                 data_for_firebase["blood_oxygen"] = accel_temp_hr_thread_data[3]
 
-                data_for_firebase["address"] = "Koparkhairane, Navi Mumbai, Maharashtra, INDIA, 400709"
+                data_for_firebase["address"] = "SVKMs Dwarkadas J. Sanghvi College of Engineering, Vile Parle, Maharashtra, India, 400056"
                 data_for_firebase["description"] = "Autodetected by the device"
 
                 if lat_lon:
@@ -118,21 +126,28 @@ async def values():
                 data_for_firebase["video"] = []
                 data_for_firebase["authority_id"] = None
 
-                # json_data = json.dumps(data_for_firebase, indent=4)
-
             time.sleep(5)
 
-    except KeyboardInterrupt:
-        print('Keyboard interrupt detected, exiting...')
+    except Exception as e:
+        print(f"[ERROR] An error occurred: {e}")
     finally:
-        print('All threads stopped and completed.')
+        GPIO.cleanup()
+        print("\n[INFO] Stopping all threads and exiting program.")
+
+
+def signal_handler(sig, frame):
+    global stop_threads
+
+    print("\n[INFO] Ctrl + C detected. Stopping all threads...")
+    stop_threads = True
+
 
 if __name__ == "__main__":
     data_for_firebase = {}
+    stop_threads = False
 
     BUTTON_PIN = 16
     GPIO.setmode(GPIO.BCM)
-
     GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     lat_lon = get_lat_long()
@@ -140,11 +155,9 @@ if __name__ == "__main__":
     # Initialize Firebase Admin SDK
     cred = credentials.Certificate('serviceAccountKey.json')  # Replace with your service account JSON file path
     firebase_admin.initialize_app(cred)
-
     # Initialize Firestore
     db = firestore.client()
 
+    signal.signal(signal.SIGINT, signal_handler)
+
     asyncio.run(values())
-
-
-
