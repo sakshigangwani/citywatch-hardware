@@ -53,7 +53,7 @@ def send_to_firebase_on_button_press():
         while not stop_threads:
             time.sleep(0.2)
             if GPIO.input(BUTTON_PIN) == GPIO.LOW:
-                print("[INFO] Button is pressed")
+                print("\n[INFO] Button is pressed\n")
                 # Save to Firestore
                 try:
                     # Generate a unique ID using uuid4
@@ -64,12 +64,12 @@ def send_to_firebase_on_button_press():
                     current_datetime = datetime.now(tz=timezone.utc)
                     data_for_firebase["date_time"] = current_datetime
 
-                    print(data_for_firebase)
+                    print(f"\nData to be written to Firestore: \n{data_for_firebase}\n")
                     doc_ref = db.collection("reports").document(str(reportID))
                     doc_ref.set(data_for_firebase)
                     print(f"[INFO] Data successfully written to Firestore: {reportID}")
                 except Exception as e:
-                    print(f"[ERROR] Error writing to Firestore: {e}")
+                    print(f"\n[ERROR] Error writing to Firestore: {e}\n")
             else:
                 pass
     except KeyboardInterrupt:
@@ -99,12 +99,16 @@ async def values():
             # Handle accelerometer and gyroscope data
             if not mpu6050_data_queue.empty():
                 mpu6050_thread_data = mpu6050_data_queue.get()
-                print("[INFO] Data from mpu6050 thread:", mpu6050_thread_data)
+                print("\n[INFO] Data from mpu6050 thread:")
+                print(json.dumps(mpu6050_thread_data, indent=4))
+                print("\n")
 
             # Handle accelerometer, temperature, and heart rate data
             if not accel_temp_hr_data_queue.empty():
                 accel_temp_hr_thread_data = accel_temp_hr_data_queue.get()
-                print("[INFO] Data from accel temp hr thread:", accel_temp_hr_thread_data)
+                print("\n[INFO] Data from accel temp hr thread:")
+                print(json.dumps(accel_temp_hr_thread_data, indent=4))
+                print("\n")
 
                 data_for_firebase["body_temp"] = accel_temp_hr_thread_data[1]
                 data_for_firebase["heart_rate"] = float(accel_temp_hr_thread_data[2])
@@ -129,16 +133,16 @@ async def values():
             time.sleep(5)
 
     except Exception as e:
-        print(f"[ERROR] An error occurred: {e}")
+        print(f"\n[ERROR] An error occurred: {e}\n")
     finally:
         GPIO.cleanup()
-        print("\n[INFO] Stopping all threads and exiting program.")
+        print("\n[INFO] Stopping all threads and exiting program.\n")
 
 
 def signal_handler(sig, frame):
     global stop_threads
 
-    print("\n[INFO] Ctrl + C detected. Stopping all threads...")
+    print("\n[INFO] Ctrl + C detected. Stopping all threads...\n")
     stop_threads = True
 
 
