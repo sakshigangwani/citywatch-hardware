@@ -8,6 +8,8 @@ def read_heart_rate():
                         help="print raw data instead of calculation result")
     parser.add_argument("-t", "--time", type=int, default=10,
                         help="duration in seconds to read from sensor, default 30")
+    parser.add_argument("--firebase", action="store_true",
+                        help="Enable Firestore data storage")
     args = parser.parse_args()
 
     print('sensor starting...')

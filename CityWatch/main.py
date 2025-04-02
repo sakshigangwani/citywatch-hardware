@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 import json
@@ -47,7 +48,7 @@ def collect_accel_temp_hr_data(data_queue):
 
 
 def send_to_firebase_on_button_press():
-    global stop_threads
+    global stop_threads, use_firebase, db
 
     try:
         while not stop_threads:
@@ -64,10 +65,16 @@ def send_to_firebase_on_button_press():
                     current_datetime = datetime.now(tz=timezone.utc)
                     data_for_firebase["date_time"] = current_datetime
 
-                    print(f"\nData to be written to Firestore: \n{data_for_firebase}\n")
-                    doc_ref = db.collection("reports").document(str(reportID))
-                    doc_ref.set(data_for_firebase)
-                    print(f"[INFO] Data successfully written to Firestore: {reportID}")
+                    print(f"\n[INFO] Data to be written to Firestore: \n{data_for_firebase}\n")
+
+                    # Only write to Firestore if --firebase flag is set
+                    if use_firebase:
+                        doc_ref = db.collection("reports").document(str(reportID))
+                        doc_ref.set(data_for_firebase)
+                        print(f"[INFO] Data successfully written to Firestore: {reportID}\n")
+                    else:
+                        print("[INFO] Firestore write skipped (use --firebase to enable)\n")
+
                 except Exception as e:
                     print(f"\n[ERROR] Error writing to Firestore: {e}\n")
             else:
@@ -150,17 +157,24 @@ if __name__ == "__main__":
     data_for_firebase = {}
     stop_threads = False
 
+    # Check if "--firebase" is passed in the command line
+    use_firebase = "--firebase" in sys.argv
+
     BUTTON_PIN = 16
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     lat_lon = get_lat_long()
 
-    # Initialize Firebase Admin SDK
-    cred = credentials.Certificate('serviceAccountKey.json')  # Replace with your service account JSON file path
-    firebase_admin.initialize_app(cred)
-    # Initialize Firestore
-    db = firestore.client()
+    # 🔹 Initialize Firebase only if --firebase flag is set
+    if use_firebase:
+        cred = credentials.Certificate('serviceAccountKey.json')  # Replace with your service account JSON file path
+        firebase_admin.initialize_app(cred)
+        # Initialize Firestore
+        db = firestore.client()
+        print("\n[INFO] Firestore is enabled.\n")
+    else:
+        print("\n[INFO] Firestore is disabled. Use --firebase to enable it.\n")
 
     signal.signal(signal.SIGINT, signal_handler)
 
