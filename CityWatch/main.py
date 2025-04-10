@@ -56,6 +56,38 @@ def predict_fall_from_data(sensor_data):
     return result
 
 
+def predict_stress_from_data(sensor_data):
+    accel, hr, temp, spo2 = sensor_data
+
+    # Extract accel data
+    x = accel["x"]
+    y = accel["y"]
+    z = accel["z"]
+
+    # Get current time info
+    now = datetime.now()
+    month = now.month
+    time_of_day = now.hour + now.minute / 60 + now.second / 3600
+
+    # Arrange features in model's expected order
+    features = [x, y, z, hr, temp, time_of_day, month]
+    input_array = np.array([features])
+    scaled_input = stress_detection_scaler.transform(input_array)
+
+    # Predict
+    prediction = stress_detection_model.predict(scaled_input)
+    predicted_class = np.argmax(prediction[0])
+
+    # Map to label
+    stress_labels = {
+        0: "No Stress",
+        1: "Medium Stress",
+        2: "High Stress"
+    }
+
+    return stress_labels.get(predicted_class, "Unknown")
+
+
 def collect_mpu6050_data(data_queue):
     global stop_threads
 
@@ -79,6 +111,10 @@ def collect_accel_temp_hr_data(data_queue):
         heart_rate_data, spo2 = main_max30102.read_heart_rate()
         # Combine accel_data and body_temp_data into a tuple (or a dictionary if preferred)
         combined_data = (accel_data, body_temp_data, heart_rate_data, spo2)
+
+        result = predict_stress_from_data(combined_data)
+
+        print(f"\n[INFO] Result from predict_stress_from_data: {result}\n")
 
         # Put the combined data in the queue
         data_queue.put(combined_data)
@@ -217,10 +253,17 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
     # Load Fall Detection Model and Scaler
-    with open('./ML_Models/Fall_Detection/fall_detection_model.pkl', 'rb') as f1:
+    with open('./ML_Models/Fall_Detection/fall_detection.pkl', 'rb') as f1:
         fall_detection_model = pickle.load(f1)
 
     with open('./ML_Models/Fall_Detection/scaler.pkl', 'rb') as f2:
         fall_detection_scaler = pickle.load(f2)
+
+    # Load Fall Detection Model and Scaler
+    with open('./ML_Models/Stress_Detection/stress_detection.pkl', 'rb') as f3:
+        stress_detection_model = pickle.load(f3)
+
+    with open('./ML_Models/Stress_Detection/stress_scaler.pkl', 'rb') as f4:
+        stress_detection_scaler = pickle.load(f4)
 
     asyncio.run(values())
