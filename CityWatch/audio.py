@@ -55,22 +55,27 @@ def get_audio_from_wav(file_path="./louder.wav"):
 
 # Match recognized text with phrases in the dictionary
 def check_for_phrases_in_text(text, phrase_dict):
-    print(f"Checking text: {text}")
-    for english_phrase, phrases in phrase_dict.items():
-        hindi_phrase = phrases['hindi']
-        transliteration = phrases['transliteration']
+    english_phrases = list(phrase_dict.keys())
+    hindi_phrases = [v['hindi'] for v in phrase_dict.values()]
+    transliterations = [v['transliteration'] for v in phrase_dict.values()]
 
-        if text == english_phrase:
-            print(f"Matched English phrase: {english_phrase}")
-            speak(f"The translation is: {hindi_phrase}")
+    text_words = text.lower().split()  # Simple split by space
+
+    for word in text_words:
+        if word in english_phrases:
+            print(f"Help keyword detected in English: {word}")
+            # speak("Help keyword detected in English.")
+            return
+        if word in hindi_phrases:
+            print(f"Help keyword detected in Hindi: {word}")
+            # speak("Help keyword detected in Hindi.")
+            return
+        if word in transliterations:
+            print(f"Help keyword detected in Transliteration: {word}")
+            # speak("Help keyword detected in Transliteration.")
             return
 
-        if transliteration and text == transliteration:
-            print(f"Matched transliteration: {transliteration}")
-            speak(f"The translation is: {hindi_phrase}")
-            return
-
-    print("No matching phrase found.")
+    print("No help keyword detected.")
 
 # Main loop
 if __name__ == "__main__":
