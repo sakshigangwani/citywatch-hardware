@@ -4,13 +4,6 @@ from gtts import gTTS
 import csv
 import subprocess
 
-# Function to speak text out loud
-def speak(text, lang="hi"):
-    tts = gTTS(text=text, lang=lang)
-    filename = "./voice.mp3"
-    tts.save(filename)
-    os.system(f"mpg123 {filename}")  # Use mpg123 to play the file
-
 # Function to clean the Hindi phrase and extract transliterations
 def clean_hindi_phrase(hindi_phrase):
     if '(' in hindi_phrase:
@@ -33,24 +26,34 @@ def load_phrases_from_csv(file_path):
 
 # Record audio from INMP441 using arecord and amplify using ffmpeg
 def record_and_process_audio():
-    print("Recording from INMP441...")
-    subprocess.run(["arecord", "-D", "hw:2,0", "-f", "S32_LE", "-r", "48000", "-c", "2", "test.wav", "-d", "4"], check=True)
+    print("\n[INFO] Recording from INMP441...\n")
+    subprocess.run(
+        ["arecord", "-D", "hw:2,0", "-f", "S32_LE", "-r", "48000", "-c", "2", "test.wav", "-d", "4"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True
+    )
 
-    print("Amplifying audio...")
-    subprocess.run(["ffmpeg", "-y", "-i", "test.wav", "-filter:a", "volume=14.0", "louder.wav"], check=True)
+    print("\n[INFO] Amplifying audio...\n")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", "test.wav", "-filter:a", "volume=14.0", "louder.wav"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True
+    )
 
 # Recognize text from WAV file
 def get_audio_from_wav(file_path="./louder.wav"):
-    print("Recognizing audio...")
+    print("\n[INFO] Recognizing audio...\n")
     recognizer = sr.Recognizer()
     with sr.AudioFile(file_path) as source:
         audio = recognizer.record(source)
     try:
         text = recognizer.recognize_google(audio)
-        print("You said:", text)
+        print(f"\n[INFO] You said: {text}\n")
         return text.lower()
     except Exception as e:
-        print("Could not understand audio:", str(e))
+        print(f"\n[ERROR] Could not understand audio: {str(e)}\n")
         return ""
 
 # Match recognized text with phrases in the dictionary
@@ -63,19 +66,17 @@ def check_for_phrases_in_text(text, phrase_dict):
 
     for word in text_words:
         if word in english_phrases:
-            print(f"Help keyword detected in English: {word}")
-            # speak("Help keyword detected in English.")
-            return
+            print(f"\n[INFO] Help keyword detected in English: {word}\n")
+            return True
         if word in hindi_phrases:
-            print(f"Help keyword detected in Hindi: {word}")
-            # speak("Help keyword detected in Hindi.")
-            return
+            print(f"\n[INFO] Help keyword detected in Hindi: {word}\n")
+            return True
         if word in transliterations:
-            print(f"Help keyword detected in Transliteration: {word}")
-            # speak("Help keyword detected in Transliteration.")
-            return
+            print(f"\n[INFO] Help keyword detected in Transliteration: {word}\n")
+            return True
 
-    print("No help keyword detected.")
+    print("\n[WARN] No help keyword detected.\n")
+    return False
 
 # Main loop
 if __name__ == "__main__":
