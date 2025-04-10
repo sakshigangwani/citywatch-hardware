@@ -6,6 +6,8 @@ import uuid
 import geocoder
 import asyncio
 import signal
+import pickle
+import numpy as np
 from queue import Queue
 from datetime import datetime, timezone
 import firebase_admin
@@ -23,11 +25,47 @@ def get_lat_long():
     return g.latlng  # Returns [latitude, longitude]
 
 
+def predict_fall_from_data(sensor_data):
+    # Ensure correct feature order
+    feature_order = [
+        "acc_max",
+        "acc_kurtosis",
+        "acc_skewness",
+        "gyro_kurtosis",
+        "gyro_skewness",
+        "lin_max",
+        "post_lin_max",
+        "post_gyro_max"
+    ]
+
+    # Extract values in correct order
+    values = [sensor_data[feature] for feature in feature_order]  # shape: (8,)
+
+    # Convert to 2D array for scaler and model: shape (1, 8)
+    input_array = np.array([values])
+
+    # Scale
+    scaled_input = fall_detection_scaler.transform(input_array)
+
+    # Predict
+    prediction = fall_detection_model.predict(scaled_input)
+
+    # Result
+    result = "Fall Detected" if prediction[0] == 1 else "No Fall"
+
+    return result
+
+
 def collect_mpu6050_data(data_queue):
     global stop_threads
 
     while not stop_threads:
         mpu6050_data = mpu6050_sensor_data.collect_sensor_data()
+
+        result = predict_fall_from_data(mpu6050_data)
+
+        print(f"\n[INFO] Result from predict_fall_from_data: {result}\n")
+
         data_queue.put(mpu6050_data)  # Add data to the queue
         time.sleep(2)
 
@@ -177,5 +215,12 @@ if __name__ == "__main__":
         print("\n[INFO] Firestore is disabled. Use --firebase to enable it.\n")
 
     signal.signal(signal.SIGINT, signal_handler)
+
+    # Load Fall Detection Model and Scaler
+    with open('./ML_Models/Fall_Detection/fall_detection_model.pkl', 'rb') as f1:
+        fall_detection_model = pickle.load(f1)
+
+    with open('./ML_Models/Fall_Detection/scaler.pkl', 'rb') as f2:
+        fall_detection_scaler = pickle.load(f2)
 
     asyncio.run(values())
