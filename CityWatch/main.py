@@ -16,6 +16,7 @@ import mpu6050_sensor_data
 import main_mlx90614
 import main_max30102
 import RPi.GPIO as GPIO
+import audio
 
 
 # Function to get latitude and longitude using WiFi
@@ -121,6 +122,17 @@ def collect_accel_temp_hr_data(data_queue):
         time.sleep(2)
 
 
+def predict_help_keywords():
+    global stop_threads, help_phrases
+
+    while not stop_threads:
+        print("\n[INFO] Predicting help keywords...\n")
+        audio.record_and_process_audio()
+        recognized_text = audio.get_audio_from_wav()
+        audio.check_for_phrases_in_text(recognized_text, help_phrases)
+        time.sleep(2)
+
+
 def send_to_firebase_on_button_press():
     global stop_threads, use_firebase, db
 
@@ -170,6 +182,10 @@ async def values():
     accel_temp_hr_thread = threading.Thread(target=collect_accel_temp_hr_data, args=(accel_temp_hr_data_queue,))
     accel_temp_hr_thread.daemon = True  # Allows the program to exit even if the thread is running
     accel_temp_hr_thread.start()
+
+    help_keyword_thread = threading.Thread(target=predict_help_keywords)
+    help_keyword_thread.daemon = True  # Allows the program to exit even if the thread is running
+    help_keyword_thread.start()
 
     button_thread = threading.Thread(target=send_to_firebase_on_button_press)
     button_thread.daemon = True
@@ -265,5 +281,9 @@ if __name__ == "__main__":
 
     with open('./ML_Models/Stress_Detection/stress_scaler.pkl', 'rb') as f4:
         stress_detection_scaler = pickle.load(f4)
+
+    # Help Keyword Detection
+    csv_file_path = "./ML_Models/Help_Keyword_Detection/help_words_dataset.csv"
+    help_phrases = audio.load_phrases_from_csv(csv_file_path)
 
     asyncio.run(values())
