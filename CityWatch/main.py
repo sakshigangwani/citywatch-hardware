@@ -213,12 +213,16 @@ async def values():
     button_thread.daemon = True
     button_thread.start()
 
-    mpu6050_class = 0
-    accel_temp_hr_class = 0
-    help_keyword_class = 0
+    help_keyword_alert_counter = 0
 
     try:
         while not stop_threads:
+            mpu6050_class = 0
+            accel_temp_hr_class = 0
+            help_keyword_class = 0
+
+            send_alert = False
+
             # Handle accelerometer and gyroscope data
             if not mpu6050_data_queue.empty():
                 mpu6050_thread_data = mpu6050_data_queue.get()
@@ -261,14 +265,39 @@ async def values():
                 data_for_firebase["location"] = None
 
             data_for_firebase["photo"] = []
-            data_for_firebase["type_of_event"] = "Hardware Device"
+            data_for_firebase["type_of_event"] = "Wearable Device"
             data_for_firebase["user_id"] = "VjoXUDwAI7Q0FxFoRdOmGagXOYk1"
             data_for_firebase["user_type"] = "Victim"
             data_for_firebase["video"] = []
             data_for_firebase["authority_id"] = None
 
-            # Rules for classification
-            print(f"\n[INFO] Fall Detection Class: {mpu6050_class}, Stress Detection Class: {accel_temp_hr_class}, Help Keyword Detection Class: {help_keyword_class}\n")
+            # Rules for alert classification
+
+            # Rule 1: Fall + High Stress → High chance of emergency
+            if mpu6050_class == 1 and accel_temp_hr_class == 2:
+                send_alert = True
+            # Rule 2: Fall + Help keyword → High chance of emergency
+            elif mpu6050_class == 1 and help_keyword_class == 1:
+                send_alert = True
+            # Rule 3: Help keyword + High Stress → Possible emergency
+            elif help_keyword_class == 1 and accel_temp_hr_class == 2:
+                send_alert = True
+            #Rule 4: Help keyword alone, only if repeated over time
+            elif help_keyword_class == 1:
+                help_keyword_alert_counter += 1
+
+            if help_keyword_alert_counter >= 3:
+                help_keyword_alert_counter = 0
+                print("\n[ALERT] Emergency detected. Alerting authorities!\n")
+                save_data_to_firebase()
+
+            # Send alert to authorities if send_alert is True
+            # Final decision # TODO: Add timer to stop sending alerts
+            if send_alert:
+                print("\n[ALERT] Emergency detected. Alerting authorities!\n")
+                save_data_to_firebase()
+            else:
+                print("\n[INFO] Situation normal. No alert needed.\n")
 
             time.sleep(5)
 
