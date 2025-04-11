@@ -72,7 +72,7 @@ def predict_fall_from_data(sensor_data):
 
 
 def predict_stress_from_data(sensor_data):
-    accel, hr, temp, spo2 = sensor_data
+    accel, temp, hr, spo2 = sensor_data
 
     # Extract accel data
     x = accel["x"]
@@ -85,7 +85,7 @@ def predict_stress_from_data(sensor_data):
     time_of_day = now.hour + now.minute / 60 + now.second / 3600
 
     # Arrange features in model's expected order
-    features = [x, y, z, hr, temp, time_of_day, month]
+    features = [x, y, z, hr, temp, month, time_of_day]
     input_array = np.array([features])
     scaled_input = stress_detection_scaler.transform(input_array)
 
@@ -100,12 +100,15 @@ def predict_stress_from_data(sensor_data):
         2: "High Stress"
     }
 
+    if (hr == 0):
+        predicted_class = 0
+
     if (predicted_class == 1):
-        return (stress_labels.get(predicted_class, "Unknown"), 0)
-    elif (predicted_class == 2):
         return (stress_labels.get(predicted_class, "Unknown"), 1)
-    else:
+    elif (predicted_class == 2):
         return (stress_labels.get(predicted_class, "Unknown"), 2)
+    else:
+        return (stress_labels.get(predicted_class, "Unknown"), 0)
 
 
 def collect_mpu6050_data(data_queue):
@@ -138,12 +141,12 @@ def collect_accel_temp_hr_data(data_queue):
         result, predicted_class = predict_stress_from_data(combined_data)
 
         # Combine accel_data and body_temp_data into a tuple (or a dictionary if preferred)
-        combined_data = (accel_data, body_temp_data, heart_rate_data, spo2, predicted_class)
+        combined_data_2 = (accel_data, body_temp_data, heart_rate_data, spo2, predicted_class)
 
         print(f"\n[INFO] Result from predict_stress_from_data: {result}\n")
 
         # Put the combined data in the queue
-        data_queue.put(combined_data)
+        data_queue.put(combined_data_2)
         time.sleep(2)
 
 
