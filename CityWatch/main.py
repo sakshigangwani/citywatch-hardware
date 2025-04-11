@@ -10,6 +10,7 @@ import pickle
 import numpy as np
 from queue import Queue
 from datetime import datetime, timezone
+from geopy.geocoders import Nominatim
 import firebase_admin
 from firebase_admin import credentials, firestore
 import mpu6050_sensor_data
@@ -17,6 +18,16 @@ import main_mlx90614
 import main_max30102
 import RPi.GPIO as GPIO
 import audio
+
+
+def get_address_from_lat_long(lat, lon):
+    try:
+        geolocator = Nominatim(user_agent="iot_healthcare_device_app")  # <-- use a real app name or email
+        location = geolocator.reverse(f"{lat}, {lon}")
+        return location.address if location else "Address not found"
+    except Exception as e:
+        print(f"[ERROR] Failed to get address from coordinates: {e}")
+        return "Error retrieving address"
 
 
 # Function to get latitude and longitude using WiFi
@@ -89,9 +100,9 @@ def predict_stress_from_data(sensor_data):
         2: "High Stress"
     }
 
-    if (predicted_class == 0):
+    if (predicted_class == 1):
         return (stress_labels.get(predicted_class, "Unknown"), 0)
-    elif (predicted_class == 1):
+    elif (predicted_class == 2):
         return (stress_labels.get(predicted_class, "Unknown"), 1)
     else:
         return (stress_labels.get(predicted_class, "Unknown"), 2)
@@ -191,7 +202,7 @@ def send_to_firebase_on_button_press():
 
 
 async def values():
-    global stop_threads
+    global stop_threads, get_user_address
 
     mpu6050_data_queue = Queue()  
     accel_temp_hr_data_queue = Queue()
@@ -255,14 +266,19 @@ async def values():
                 help_keyword_class = help_keyword_thread_data
 
             # Data to be sent to Firebase
-            data_for_firebase["address"] = "SVKMs Dwarkadas J. Sanghvi College of Engineering, Vile Parle, Maharashtra, India, 400056"
             data_for_firebase["description"] = "Autodetected by the device"
 
             if lat_lon:
                 latitude, longitude = lat_lon
                 data_for_firebase["location"] = firestore.GeoPoint(latitude, longitude)
+
+                if get_user_address:
+                    data_for_firebase["address"] = get_address_from_lat_long(latitude, longitude)
+                else:
+                    data_for_firebase["address"] = "SVKMs Dwarkadas J. Sanghvi College of Engineering, Vile Parle, Maharashtra, India, 400056"
             else:
                 data_for_firebase["location"] = None
+                data_for_firebase["address"] = "Unknown"
 
             data_for_firebase["photo"] = []
             data_for_firebase["type_of_event"] = "Wearable Device"
@@ -321,6 +337,7 @@ if __name__ == "__main__":
 
     # Check if "--firebase" is passed in the command line
     use_firebase = "--firebase" in sys.argv
+    get_user_address = "--user-address" in sys.argv
 
     BUTTON_PIN = 16
     GPIO.setmode(GPIO.BCM)

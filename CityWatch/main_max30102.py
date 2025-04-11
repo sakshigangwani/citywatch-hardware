@@ -10,6 +10,8 @@ def read_heart_rate():
                         help="duration in seconds to read from sensor, default 30")
     parser.add_argument("--firebase", action="store_true",
                         help="Enable Firestore data storage")
+    parser.add_argument("--user-address", action="store_true",
+                        help="Get address of user based on IP address")
     args = parser.parse_args()
 
     print('sensor starting...')
