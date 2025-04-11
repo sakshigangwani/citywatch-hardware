@@ -54,7 +54,10 @@ def predict_fall_from_data(sensor_data):
     # Result
     result = "Fall Detected" if prediction[0] == 1 else "No Fall"
 
-    return result
+    if (prediction[0] == 1):
+        return (result, 1)
+    else:
+        return (result, 0)
 
 
 def predict_stress_from_data(sensor_data):
@@ -86,7 +89,12 @@ def predict_stress_from_data(sensor_data):
         2: "High Stress"
     }
 
-    return stress_labels.get(predicted_class, "Unknown")
+    if (predicted_class == 0):
+        return (stress_labels.get(predicted_class, "Unknown"), 0)
+    elif (predicted_class == 1):
+        return (stress_labels.get(predicted_class, "Unknown"), 1)
+    else:
+        return (stress_labels.get(predicted_class, "Unknown"), 2)
 
 
 def collect_mpu6050_data(data_queue):
@@ -95,11 +103,13 @@ def collect_mpu6050_data(data_queue):
     while not stop_threads:
         mpu6050_data = mpu6050_sensor_data.collect_sensor_data()
 
-        result = predict_fall_from_data(mpu6050_data)
+        result, prediction_class = predict_fall_from_data(mpu6050_data)
 
         print(f"\n[INFO] Result from predict_fall_from_data: {result}\n")
 
-        data_queue.put(mpu6050_data)  # Add data to the queue
+        combined_data = (mpu6050_data, prediction_class)
+
+        data_queue.put(combined_data)  # Add data to the queue
         time.sleep(2)
 
 
@@ -110,10 +120,14 @@ def collect_accel_temp_hr_data(data_queue):
         accel_data = mpu6050_sensor_data.read_accelerometer_data()
         body_temp_data = main_mlx90614.get_object_temperature()
         heart_rate_data, spo2 = main_max30102.read_heart_rate()
+
         # Combine accel_data and body_temp_data into a tuple (or a dictionary if preferred)
         combined_data = (accel_data, body_temp_data, heart_rate_data, spo2)
 
-        result = predict_stress_from_data(combined_data)
+        result, predicted_class = predict_stress_from_data(combined_data)
+
+        # Combine accel_data and body_temp_data into a tuple (or a dictionary if preferred)
+        combined_data = (accel_data, body_temp_data, heart_rate_data, spo2, predicted_class)
 
         print(f"\n[INFO] Result from predict_stress_from_data: {result}\n")
 
@@ -122,15 +136,43 @@ def collect_accel_temp_hr_data(data_queue):
         time.sleep(2)
 
 
-def predict_help_keywords():
+def predict_help_keywords(data_queue):
     global stop_threads, help_phrases
 
     while not stop_threads:
         print("\n[INFO] Predicting help keywords...\n")
         audio.record_and_process_audio()
         recognized_text = audio.get_audio_from_wav()
-        audio.check_for_phrases_in_text(recognized_text, help_phrases)
+        predicted_class = audio.check_for_phrases_in_text(recognized_text, help_phrases)
+
+        data_queue.put(predicted_class)
         time.sleep(2)
+
+
+def save_data_to_firebase():
+    global stop_threads, use_firebase, db
+    # Save to Firestore
+    try:
+        # Generate a unique ID using uuid4
+        reportID = uuid.uuid4()
+        
+        data_for_firebase["id"] = str(reportID)
+
+        current_datetime = datetime.now(tz=timezone.utc)
+        data_for_firebase["date_time"] = current_datetime
+
+        print(f"\n[INFO] Data to be written to Firestore: \n{data_for_firebase}\n")
+
+        # Only write to Firestore if --firebase flag is set
+        if use_firebase:
+            doc_ref = db.collection("reports").document(str(reportID))
+            doc_ref.set(data_for_firebase)
+            print(f"[INFO] Data successfully written to Firestore: {reportID}\n")
+        else:
+            print("[INFO] Firestore write skipped (use --firebase to enable)\n")
+
+    except Exception as e:
+        print(f"\n[ERROR] Error writing to Firestore: {e}\n")
 
 
 def send_to_firebase_on_button_press():
@@ -141,28 +183,7 @@ def send_to_firebase_on_button_press():
             time.sleep(0.2)
             if GPIO.input(BUTTON_PIN) == GPIO.LOW:
                 print("\n[INFO] Button is pressed\n")
-                # Save to Firestore
-                try:
-                    # Generate a unique ID using uuid4
-                    reportID = uuid.uuid4()
-                    
-                    data_for_firebase["id"] = str(reportID)
-
-                    current_datetime = datetime.now(tz=timezone.utc)
-                    data_for_firebase["date_time"] = current_datetime
-
-                    print(f"\n[INFO] Data to be written to Firestore: \n{data_for_firebase}\n")
-
-                    # Only write to Firestore if --firebase flag is set
-                    if use_firebase:
-                        doc_ref = db.collection("reports").document(str(reportID))
-                        doc_ref.set(data_for_firebase)
-                        print(f"[INFO] Data successfully written to Firestore: {reportID}\n")
-                    else:
-                        print("[INFO] Firestore write skipped (use --firebase to enable)\n")
-
-                except Exception as e:
-                    print(f"\n[ERROR] Error writing to Firestore: {e}\n")
+                save_data_to_firebase()
             else:
                 pass
     except KeyboardInterrupt:
@@ -174,6 +195,7 @@ async def values():
 
     mpu6050_data_queue = Queue()  
     accel_temp_hr_data_queue = Queue()
+    help_keyword_queue = Queue()
 
     mpu6050_data_thread = threading.Thread(target=collect_mpu6050_data, args=(mpu6050_data_queue,))
     mpu6050_data_thread.daemon = True  # Allows the program to exit even if the thread is running
@@ -183,13 +205,17 @@ async def values():
     accel_temp_hr_thread.daemon = True  # Allows the program to exit even if the thread is running
     accel_temp_hr_thread.start()
 
-    help_keyword_thread = threading.Thread(target=predict_help_keywords)
+    help_keyword_thread = threading.Thread(target=predict_help_keywords, args=(help_keyword_queue,))
     help_keyword_thread.daemon = True  # Allows the program to exit even if the thread is running
     help_keyword_thread.start()
 
     button_thread = threading.Thread(target=send_to_firebase_on_button_press)
     button_thread.daemon = True
     button_thread.start()
+
+    mpu6050_class = 0
+    accel_temp_hr_class = 0
+    help_keyword_class = 0
 
     try:
         while not stop_threads:
@@ -200,6 +226,8 @@ async def values():
                 print(json.dumps(mpu6050_thread_data, indent=4))
                 print("\n")
 
+                mpu6050_class = mpu6050_thread_data[1]
+
             # Handle accelerometer, temperature, and heart rate data
             if not accel_temp_hr_data_queue.empty():
                 accel_temp_hr_thread_data = accel_temp_hr_data_queue.get()
@@ -207,25 +235,40 @@ async def values():
                 print(json.dumps(accel_temp_hr_thread_data, indent=4))
                 print("\n")
 
+                accel_temp_hr_class = accel_temp_hr_thread_data[4]
+
                 data_for_firebase["body_temp"] = accel_temp_hr_thread_data[1]
                 data_for_firebase["heart_rate"] = float(accel_temp_hr_thread_data[2])
                 data_for_firebase["blood_oxygen"] = accel_temp_hr_thread_data[3]
 
-                data_for_firebase["address"] = "SVKMs Dwarkadas J. Sanghvi College of Engineering, Vile Parle, Maharashtra, India, 400056"
-                data_for_firebase["description"] = "Autodetected by the device"
+            # Handle help keyword detection data
+            if not help_keyword_queue.empty():
+                help_keyword_thread_data = help_keyword_queue.get()
+                print("\n[INFO] Data from help keyword thread:")
+                print(json.dumps(help_keyword_thread_data, indent=4))
+                print("\n")
 
-                if lat_lon:
-                    latitude, longitude = lat_lon
-                    data_for_firebase["location"] = firestore.GeoPoint(latitude, longitude)
-                else:
-                    data_for_firebase["location"] = None
+                help_keyword_class = help_keyword_thread_data
 
-                data_for_firebase["photo"] = []
-                data_for_firebase["type_of_event"] = "Hardware Device"
-                data_for_firebase["user_id"] = "VjoXUDwAI7Q0FxFoRdOmGagXOYk1"
-                data_for_firebase["user_type"] = "Victim"
-                data_for_firebase["video"] = []
-                data_for_firebase["authority_id"] = None
+            # Data to be sent to Firebase
+            data_for_firebase["address"] = "SVKMs Dwarkadas J. Sanghvi College of Engineering, Vile Parle, Maharashtra, India, 400056"
+            data_for_firebase["description"] = "Autodetected by the device"
+
+            if lat_lon:
+                latitude, longitude = lat_lon
+                data_for_firebase["location"] = firestore.GeoPoint(latitude, longitude)
+            else:
+                data_for_firebase["location"] = None
+
+            data_for_firebase["photo"] = []
+            data_for_firebase["type_of_event"] = "Hardware Device"
+            data_for_firebase["user_id"] = "VjoXUDwAI7Q0FxFoRdOmGagXOYk1"
+            data_for_firebase["user_type"] = "Victim"
+            data_for_firebase["video"] = []
+            data_for_firebase["authority_id"] = None
+
+            # Rules for classification
+            print(f"\n[INFO] Fall Detection Class: {mpu6050_class}, Stress Detection Class: {accel_temp_hr_class}, Help Keyword Detection Class: {help_keyword_class}\n")
 
             time.sleep(5)
 

@@ -67,16 +67,16 @@ def check_for_phrases_in_text(text, phrase_dict):
     for word in text_words:
         if word in english_phrases:
             print(f"\n[INFO] Help keyword detected in English: {word}\n")
-            return True
+            return 1
         if word in hindi_phrases:
             print(f"\n[INFO] Help keyword detected in Hindi: {word}\n")
-            return True
+            return 1
         if word in transliterations:
             print(f"\n[INFO] Help keyword detected in Transliteration: {word}\n")
-            return True
+            return 1
 
     print("\n[WARN] No help keyword detected.\n")
-    return False
+    return 0
 
 # Main loop
 if __name__ == "__main__":
