@@ -1,76 +1,89 @@
-import pyaudio
-import numpy as np
-import wave
-import datetime
 import os
+import speech_recognition as sr
+from gtts import gTTS
+import csv
+import subprocess
 
-##############################################
-# function for setting up pyaudio
-##############################################
-def pyserial_start():
-    audio = pyaudio.PyAudio()
-    stream = audio.open(
-        format=pyaudio_format,
-        rate=samp_rate,
-        channels=chans,
-        input_device_index=dev_index,
-        input=True,
-        frames_per_buffer=CHUNK
+# Function to clean the Hindi phrase and extract transliterations
+def clean_hindi_phrase(hindi_phrase):
+    if '(' in hindi_phrase:
+        hindi_phrase, transliteration = hindi_phrase.split('(')
+        transliteration = transliteration.replace(')', '').strip()
+        return hindi_phrase.strip(), transliteration.strip()
+    return hindi_phrase.strip(), None
+
+# Load the CSV file into a dictionary
+def load_phrases_from_csv(file_path):
+    phrase_dict = {}
+    with open(file_path, mode='r', encoding='utf-8') as file:
+        csv_reader = csv.reader(file)
+        next(csv_reader)  # Skip the header
+        for row in csv_reader:
+            english_phrase = row[0].strip().lower()
+            hindi_phrase, transliteration = clean_hindi_phrase(row[1].strip().lower())
+            phrase_dict[english_phrase] = {'hindi': hindi_phrase, 'transliteration': transliteration}
+    return phrase_dict
+
+# Record audio from INMP441 using arecord and amplify using ffmpeg
+def record_and_process_audio():
+    print("\n[INFO] Recording from INMP441...\n")
+    subprocess.run(
+        ["arecord", "-D", "hw:2,0", "-f", "S32_LE", "-r", "48000", "-c", "2", "test.wav", "-d", "4"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True
     )
-    stream.stop_stream()
-    return stream, audio
 
-def pyserial_end():
-    stream.close()
-    audio.terminate()
+    print("\n[INFO] Amplifying audio...\n")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", "test.wav", "-filter:a", "volume=14.0", "louder.wav"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True
+    )
 
-##############################################
-# function for grabbing data from buffer
-##############################################
-def data_grabber(rec_len):
-    stream.start_stream()
-    stream.read(CHUNK, exception_on_overflow=False)  # flush port first 
-    print('Recording Started.')
-    data_frames = []
-    for _ in range(0, int((samp_rate * rec_len) / CHUNK)):
-        stream_data = stream.read(CHUNK, exception_on_overflow=False)
-        data_frames.append(stream_data)
-    stream.stop_stream()
-    print('Recording Stopped.')
-    return data_frames
+# Recognize text from WAV file
+def get_audio_from_wav(file_path="./louder.wav"):
+    print("\n[INFO] Recognizing audio...\n")
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(file_path) as source:
+        audio = recognizer.record(source)
+    try:
+        text = recognizer.recognize_google(audio)
+        print(f"\n[INFO] You said: {text}\n")
+        return text.lower()
+    except Exception as e:
+        print(f"\n[ERROR] Could not understand audio: {str(e)}\n")
+        return ""
 
-##############################################
-# Save data as .wav file
-##############################################
-def data_saver(data_frames, t_0):
-    data_folder = './data/'
-    if not os.path.isdir(data_folder):
-        os.mkdir(data_folder)
-    filename = datetime.datetime.strftime(t_0, '%Y_%m_%d_%H_%M_%S_audio')
-    wf = wave.open(data_folder + filename + '.wav', 'wb')
-    wf.setnchannels(chans)
-    wf.setsampwidth(audio.get_sample_size(pyaudio_format))
-    wf.setframerate(samp_rate)
-    wf.writeframes(b''.join(data_frames))
-    wf.close()
-    return filename
+# Match recognized text with phrases in the dictionary
+def check_for_phrases_in_text(text, phrase_dict):
+    english_phrases = list(phrase_dict.keys())
+    hindi_phrases = [v['hindi'] for v in phrase_dict.values()]
+    transliterations = [v['transliteration'] for v in phrase_dict.values()]
 
-##############################################
-# Main Data Acquisition Procedure
-##############################################
+    text_words = text.lower().split()  # Simple split by space
+
+    for word in text_words:
+        if word in english_phrases:
+            print(f"\n[INFO] Help keyword detected in English: {word}\n")
+            return 1
+        if word in hindi_phrases:
+            print(f"\n[INFO] Help keyword detected in Hindi: {word}\n")
+            return 1
+        if word in transliterations:
+            print(f"\n[INFO] Help keyword detected in Transliteration: {word}\n")
+            return 1
+
+    print("\n[WARN] No help keyword detected.\n")
+    return 0
+
+# Main loop
 if __name__ == "__main__":
-    CHUNK = 44100  # frames to keep in buffer between reads
-    samp_rate = 44100  # sample rate [Hz]
-    pyaudio_format = pyaudio.paInt16  # 16-bit device
-    chans = 1  # only read 1 channel
-    dev_index = 0  # index of sound device
+    csv_file_path = "./ML_Models/Help_Keyword_Detection/help_words_dataset.csv"
+    phrases = load_phrases_from_csv(csv_file_path)
 
-    stream, audio = pyserial_start()
-    record_length = 5  # seconds to record
-
-    input('Press Enter to Start Recording: ')
-    data_frames = data_grabber(record_length)
-    t_0 = datetime.datetime.now()
-    data_saver(data_frames, t_0)
-
-    pyserial_end()
+    while True:
+        record_and_process_audio()
+        recognized_text = get_audio_from_wav()
+        check_for_phrases_in_text(recognized_text, phrases)
