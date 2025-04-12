@@ -294,12 +294,15 @@ async def values():
 
             # Rule 1: Fall + High Stress → High chance of emergency
             if mpu6050_class == 1 and accel_temp_hr_class == 2:
+                print("\n[ALERT] High Stress and Fall detected. Alerting authorities!\n")
                 send_alert = True
             # Rule 2: Fall + Help keyword → High chance of emergency
             elif mpu6050_class == 1 and help_keyword_class == 1:
+                print("\n[ALERT] Fall and Help Keyword detected. Alerting authorities!\n")
                 send_alert = True
             # Rule 3: Help keyword + High Stress → Possible emergency
             elif help_keyword_class == 1 and accel_temp_hr_class == 2:
+                print("\n[ALERT] Help Keyword and High Stress detected. Alerting authorities!\n")
                 send_alert = True
             #Rule 4: Help keyword alone, only if repeated over time
             elif help_keyword_class == 1:
@@ -307,13 +310,12 @@ async def values():
 
             if help_keyword_alert_counter >= 3:
                 help_keyword_alert_counter = 0
-                print("\n[ALERT] Emergency detected. Alerting authorities!\n")
+                print("\n[ALERT] Help Keyword detected multiple times. Alerting authorities!\n")
                 save_data_to_firebase()
 
             # Send alert to authorities if send_alert is True
             # Final decision # TODO: Add timer to stop sending alerts
             if send_alert:
-                print("\n[ALERT] Emergency detected. Alerting authorities!\n")
                 save_data_to_firebase()
             else:
                 print("\n[INFO] Situation normal. No alert needed.\n")
