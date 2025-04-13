@@ -100,8 +100,12 @@ def predict_stress_from_data(sensor_data):
         2: "High Stress"
     }
 
-    if (hr == 0):
+    if (hr <= 75):
         predicted_class = 0
+    elif (hr > 75 and hr <= 90):
+        predicted_class = 1
+    else:
+        predicted_class = 2
 
     if (predicted_class == 1):
         return (stress_labels.get(predicted_class, "Unknown"), 1)
