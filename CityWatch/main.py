@@ -20,6 +20,29 @@ import RPi.GPIO as GPIO
 import audio
 
 
+def serialize_firestore_data(data):
+    """Serialize Firestore-specific types into plain Python types."""
+    def convert_value(val):
+        if isinstance(val, datetime):
+            return val.isoformat()
+        elif isinstance(val, firestore.GeoPoint):
+            return {"latitude": val.latitude, "longitude": val.longitude}
+        elif isinstance(val, list):
+            return [convert_value(v) for v in val]
+        elif isinstance(val, dict):
+            return {k: convert_value(v) for k, v in val.items()}
+        else:
+            return val
+
+    # Convert the full dictionary
+    return convert_value(data)
+
+def pretty_print_firestore_data(data):
+    """Prints the Firestore data in a pretty JSON format."""
+    clean_data = serialize_firestore_data(data)
+    print(json.dumps(clean_data, indent=4))
+
+
 def get_address_from_lat_long(lat, lon):
     try:
         geolocator = Nominatim(user_agent="iot_healthcare_device_app")  # <-- use a real app name or email
@@ -179,13 +202,15 @@ def save_data_to_firebase():
         current_datetime = datetime.now(tz=timezone.utc)
         data_for_firebase["date_time"] = current_datetime
 
-        print(f"\n[INFO] Data to be written to Firestore: \n{data_for_firebase}\n")
+        print(f"{BOLD}{GREEN}\n[INFO] Data to be written to Firestore:{RESET}")
+        pretty_print_firestore_data(data_for_firebase)
+        print()
 
         # Only write to Firestore if --firebase flag is set
         if use_firebase:
             doc_ref = db.collection("reports").document(str(reportID))
             doc_ref.set(data_for_firebase)
-            print(f"[INFO] Data successfully written to Firestore: {reportID}\n")
+            print(f"{BOLD}{GREEN}\n[INFO] Data successfully written to Firestore: {reportID}\n{RESET}")
         else:
             print("[INFO] Firestore write skipped (use --firebase to enable)\n")
 
@@ -200,7 +225,8 @@ def send_to_firebase_on_button_press():
         while not stop_threads:
             time.sleep(0.2)
             if GPIO.input(BUTTON_PIN) == GPIO.LOW:
-                print("\n[INFO] Button is pressed\n")
+                print(f"{BOLD}{RED}\n[ALERT] Emergency button is pressed. Alerting authorities!\n{RESET}")
+                data_for_firebase["description"] = "Detected by the device"
                 save_data_to_firebase()
             else:
                 pass
@@ -298,15 +324,15 @@ async def values():
 
             # Rule 1: Fall + High Stress → High chance of emergency
             if mpu6050_class == 1 and accel_temp_hr_class == 2:
-                print("\n[ALERT] High Stress and Fall detected. Alerting authorities!\n")
+                print(f"{BOLD}{RED}\n[ALERT] High Stress and Fall detected. Alerting authorities!\n{RESET}")
                 send_alert = True
             # Rule 2: Fall + Help keyword → High chance of emergency
             elif mpu6050_class == 1 and help_keyword_class == 1:
-                print("\n[ALERT] Fall and Help Keyword detected. Alerting authorities!\n")
+                print(f"{BOLD}{RED}\n[ALERT] Fall and Help Keyword detected. Alerting authorities!\n{RESET}")
                 send_alert = True
             # Rule 3: Help keyword + High Stress → Possible emergency
             elif help_keyword_class == 1 and accel_temp_hr_class == 2:
-                print("\n[ALERT] Help Keyword and High Stress detected. Alerting authorities!\n")
+                print(f"{BOLD}{RED}\n[ALERT] Help Keyword and High Stress detected. Alerting authorities!\n{RESET}")
                 send_alert = True
             #Rule 4: Help keyword alone, only if repeated over time
             elif help_keyword_class == 1:
@@ -314,7 +340,7 @@ async def values():
 
             if help_keyword_alert_counter >= 3:
                 help_keyword_alert_counter = 0
-                print("\n[ALERT] Help Keyword detected multiple times. Alerting authorities!\n")
+                print(f"{BOLD}{RED}\n[ALERT] Help Keyword detected multiple times. Alerting authorities!\n{RESET}")
                 save_data_to_firebase()
 
             # Send alert to authorities if send_alert is True
@@ -341,6 +367,13 @@ def signal_handler(sig, frame):
 
 
 if __name__ == "__main__":
+    # 256-Color Bright ANSI codes
+    RED         = "\033[38;5;196m"
+    GREEN       = "\033[38;5;46m"
+    YELLOW      = "\033[38;5;226m"
+    RESET       = "\033[0m"
+    BOLD        = "\033[1m"
+
     data_for_firebase = {}
     stop_threads = False
 
