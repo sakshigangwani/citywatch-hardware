@@ -276,6 +276,10 @@ async def values():
 
                 mpu6050_class = mpu6050_thread_data[1]
 
+                if (mpu6050_class == 1):
+                    fall_data["value"] = mpu6050_class
+                    fall_data["timestamp"] = time.time()
+
             # Handle accelerometer, temperature, and heart rate data
             if not accel_temp_hr_data_queue.empty():
                 accel_temp_hr_thread_data = accel_temp_hr_data_queue.get()
@@ -284,6 +288,10 @@ async def values():
                 print("\n")
 
                 accel_temp_hr_class = accel_temp_hr_thread_data[4]
+
+                if (accel_temp_hr_class == 2):
+                    stress_data["value"] = accel_temp_hr_class
+                    stress_data["timestamp"] = time.time()
 
                 data_for_firebase["body_temp"] = accel_temp_hr_thread_data[1]
                 data_for_firebase["heart_rate"] = float(accel_temp_hr_thread_data[2])
@@ -297,6 +305,10 @@ async def values():
                 print("\n")
 
                 help_keyword_class = help_keyword_thread_data
+
+                if (help_keyword_class == 1):
+                    help_data["value"] = help_keyword_class
+                    help_data["timestamp"] = time.time()
 
             # Data to be sent to Firebase
             data_for_firebase["description"] = "Autodetected by the device"
@@ -321,19 +333,31 @@ async def values():
             data_for_firebase["authority_id"] = None
 
             # Rules for alert classification
+            current_time = time.time()
+            window = 20  # seconds
+
+            fall_recent = (fall_data["value"] == 1 and current_time - fall_data["timestamp"] <= window)
+            stress_recent = (stress_data["value"] == 2 and current_time - stress_data["timestamp"] <= window)
+            help_recent = (help_data["value"] == 1 and current_time - help_data["timestamp"] <= window)
 
             # Rule 1: Fall + High Stress → High chance of emergency
-            if mpu6050_class == 1 and accel_temp_hr_class == 2:
+            if fall_recent and stress_recent:
                 print(f"{BOLD}{RED}\n[ALERT] High Stress and Fall detected. Alerting authorities!\n{RESET}")
                 send_alert = True
+                fall_data["value"] = 0
+                stress_data["value"] = 0
             # Rule 2: Fall + Help keyword → High chance of emergency
-            elif mpu6050_class == 1 and help_keyword_class == 1:
+            elif fall_recent and help_recent:
                 print(f"{BOLD}{RED}\n[ALERT] Fall and Help Keyword detected. Alerting authorities!\n{RESET}")
                 send_alert = True
+                fall_data["value"] = 0
+                help_data["value"] = 0
             # Rule 3: Help keyword + High Stress → Possible emergency
-            elif help_keyword_class == 1 and accel_temp_hr_class == 2:
+            elif help_recent and stress_recent:
                 print(f"{BOLD}{RED}\n[ALERT] Help Keyword and High Stress detected. Alerting authorities!\n{RESET}")
                 send_alert = True
+                help_data["value"] = 0
+                stress_data["value"] = 0
             #Rule 4: Help keyword alone, only if repeated over time
             elif help_keyword_class == 1:
                 help_keyword_alert_counter += 1
@@ -376,6 +400,10 @@ if __name__ == "__main__":
 
     data_for_firebase = {}
     stop_threads = False
+
+    fall_data = {"value": 0, "timestamp": None}
+    stress_data = {"value": 0, "timestamp": None}
+    help_data = {"value": 0, "timestamp": None}
 
     # Check if "--firebase" is passed in the command line
     use_firebase = "--firebase" in sys.argv
