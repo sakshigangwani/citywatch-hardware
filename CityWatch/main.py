@@ -226,7 +226,7 @@ def send_to_firebase_on_button_press():
             time.sleep(0.2)
             if GPIO.input(BUTTON_PIN) == GPIO.LOW:
                 print(f"{BOLD}{RED}\n[ALERT] Emergency button is pressed. Alerting authorities!\n{RESET}")
-                data_for_firebase["description"] = "Detected by the device"
+                data_for_firebase["description"] = "Detected by the device (Emergency button pressed)"
                 save_data_to_firebase()
             else:
                 pass
@@ -343,18 +343,21 @@ async def values():
             # Rule 1: Fall + High Stress → High chance of emergency
             if fall_recent and stress_recent:
                 print(f"{BOLD}{RED}\n[ALERT] High Stress and Fall detected. Alerting authorities!\n{RESET}")
+                data_for_firebase["description"] = "Autodetected by the device (High Stress and Fall Detected)"
                 send_alert = True
                 fall_data["value"] = 0
                 stress_data["value"] = 0
             # Rule 2: Fall + Help keyword → High chance of emergency
             elif fall_recent and help_recent:
                 print(f"{BOLD}{RED}\n[ALERT] Fall and Help Keyword detected. Alerting authorities!\n{RESET}")
+                data_for_firebase["description"] = "Autodetected by the device (Fall and Help Keyword Detected)"
                 send_alert = True
                 fall_data["value"] = 0
                 help_data["value"] = 0
             # Rule 3: Help keyword + High Stress → Possible emergency
             elif help_recent and stress_recent:
                 print(f"{BOLD}{RED}\n[ALERT] Help Keyword and High Stress detected. Alerting authorities!\n{RESET}")
+                data_for_firebase["description"] = "Autodetected by the device (Help Keyword and High Stress Detected)"
                 send_alert = True
                 help_data["value"] = 0
                 stress_data["value"] = 0
@@ -365,6 +368,7 @@ async def values():
             if help_keyword_alert_counter >= 3:
                 help_keyword_alert_counter = 0
                 print(f"{BOLD}{RED}\n[ALERT] Help Keyword detected multiple times. Alerting authorities!\n{RESET}")
+                data_for_firebase["description"] = "Autodetected by the device (Help Keyword Detected Multiple Times)"
                 save_data_to_firebase()
 
             # Send alert to authorities if send_alert is True
